@@ -12,7 +12,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r include = FALSE}
+```{r include = FALSE, dpi=300}
 library(tidyverse)
 library(reshape)
 ```
@@ -61,20 +61,26 @@ Sure enough, $r = 1$ for this dataset:
 cor(df$X, df$Y)
 ```
 
-Importantly, this is true even if we apply linear transformations to $Y$, such as multiplying everything by 2.
+Importantly, this is true even if we apply linear transformations to $Y$, such as multiplying everything by 2 or dividing everything by 2. All of the correlations visualized below have an $r = 1$!
 
 ```{r}
-df$Y2 = df$Y * 2
+df$multiply = df$Y * 2
+df$divide = df$Y / 2
 
-df %>%
+df_gathered = df %>%
+  gather(y_type, value, -X)
+
+df_gathered %>%
   ggplot(aes(x = X,
-             y = Y2)) +
+             y = value,
+             color = y_type)) +
   geom_point() +
-  labs("Perfect positive correlation") +
   theme_minimal()
 
-cor(df$X, df$Y2)
+cor(df$X, df$multiply)
+cor(df$X, df$divide)
 ```
+
 
 We can also create a perfectly *negative* correlation by multiplying everything in $X$ by $-1$:
 
@@ -204,4 +210,266 @@ But even disregarding theoretical inferences these measures afford, there are ot
 3. **Restricted ranges** (e.g., accidentally sampling from a biased portion of the underlying population) will strongly bias $r$.  
 4. $r$ doesn't actually give a measure of the **central tendency** in bivariate data---i.e., the **slope of the line**.
 
-The problem in (4) is where linear regression comes in.
+The problem in (4) is highlighted in the figure from earlier, showing how the same $r$ value can be achieved from very different relationships. Here's the figure again, just to reinforce the idea:
+
+```{r}
+df_gathered %>%
+  ggplot(aes(x = X,
+             y = value,
+             color = y_type)) +
+  geom_point() +
+  theme_minimal()
+```
+
+
+These three relationships all seem pretty different, right? But for all of them, our value for $r$ is 1. Thus, if *all* we were looking at was our $r$ value, we'd never know how different they were. 
+
+This is exactly where linear regression comes in ^[Note that linear regression still won't solve the problem of nonlinear data. [Anscombe's Quartet](https://en.wikipedia.org/wiki/Anscombe%27s_quartet) highlights the limitations of assuming linearity when analyzing bivariate data.]. 
+
+
+# Part 2: Linear regression
+
+Linear regression is a way to capture the **central tendency** in the relationship between two or more variables. Specifically, linear regression computes the **slope of the line** that best fits some set of variables. For the purposes of this tutorial, we'll be limiting our discussion to linear regression with only one predictor variable.
+
+This addresses one of the key limitations mentioned above---namely, that $r$ doesn't really tell us anything about the actual predictived *value* of $Y$ for a certain value of $X$. It just tells us that in general, $Y$ increases or decreases when $X$ increases, and how systematic that trend is. 
+
+In contrast, linear regression aims to quantify the **predicted value** for $Y$, which we'll refer to here as $Y'$, for values of $X$. This is achieved by identifying a set of **parameters** which, when used in a linear function, give us $Y'$ for some value of $X$. The function looks like this^[You might also see it written like this, depending on the context: $Y' = \beta_1X + \beta_0$.]:
+
+$Y' = bX + a$.
+
+Here, $b$ refers to the **slope** of the line, and $a$ refers to the **intercept** (the predicted value for $Y$ when $X = 0$). These terms will hopefully become clear in a moment, but first let's discuss the assumptions of linear regression.
+
+
+## Assumption 1: Linearity
+
+First, the relationship in our data is assumed to be **linear**. Of course, you can fit a line to *any* set of data, but if the relationship is clearly curvilinear then a line won't characterize that relationship very well. 
+
+Here's an example of a clearly linear relationship:
+
+
+```{r}
+df %>%
+  ggplot(aes(x = X,
+             y = Y)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Y = X",
+       y = "Y") +
+  theme_minimal()
+
+```
+
+
+
+The problem with fitting a line to nonlinear data is illustrated below by plotting a regression line over a relationship that's fundamentally nonlinear: 
+
+```{r}
+df$Y_quad = df$X ** 2
+
+df %>%
+  ggplot(aes(x = X,
+             y = Y_quad)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Y = X ^ 2",
+       y = "X ^ 2") +
+  theme_minimal()
+
+
+```
+
+The problem is even worse for an exponential relationship:
+
+```{r}
+df$Y_exp = 1.1 ** df$X
+
+df %>%
+  ggplot(aes(x = X,
+             y = Y_exp)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Y = 1.1 ^ X",
+       y = "1.1 ^ X") +
+  theme_minimal()
+  
+```
+
+So just as with linear correlations, it's important to plot your data to make sure you're not dealing with nonlinear relationships!
+
+## Assumption 2: Homoscedasticity
+
+
+Second, data points are assumed to be distributed evenly across the regression line. This property is called **homoscedasticity**^[I sometimes wonder whether the length and difficulty of remembering this word contributes to the difficulty in understanding the concept.]. 
+
+The opposite of this is called **heteroscedasticity**, meaning that our values for $Y$ *aren't* distributed evenly across the regression line. A classic example of this is the relationship between income and weekly expenditures. Overall, this relationship is usually positive, and will thus yield a positive slope (and positive $r$). But while lower-income individuals might be relatively consistent in their spending, there's sometimes much more variability among higher-income individuals---i.e., some individuals spend a huge amount of money each week, and others spend a much more modest amount. This means that our values for $Y$ don't have **equal variance** across the regression line.
+
+Heteroscedasticity can be identified by a signature **cone-shape** in a regression plot:
+
+```{r}
+df$Y_heteroscedasticity = df$X * rnorm(mean = 1, sd = .2, n = 100)
+
+df %>%
+  ggplot(aes(x = X,
+             y = Y_heteroscedasticity)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Y = 1.1 ^ X",
+       y = "1.1 ^ X") +
+  theme_minimal()
+
+```
+
+
+Heteroscedasticity doesn't necessarily bias our **coefficient estimates** for ordinary least squares regression, but it can bias our estimates of the **variance** in a given relationship, meaning that the **standard errors** for our coefficients are suspect.
+
+
+## Assumption 3: Independence
+
+A very important assumption of ordinary least squares regression (the method we'll be discussing today) is that each data point is **independent**: i.e., generated by an independent causal process. I won't go into that here, but see my [tutorial on mixed models in R](https://seantrott.github.io/mixed_models_R/#when_independence_is_not_met) for more background on independence.
+
+
+## Finding the line of best fit
+
+Intuitively, many of us could probably draw a pretty good line through a set of data points. But what does it mean to find the **best-fitting line**?
+
+The basic idea is that we want to find values for our parameters $b$ and $a$ that **minimize the difference** between our predicted values $Y'$ and our actual values $Y$. 
+
+The analytical solution is as follows:
+
+$b = \frac{SP_\text{XY}}{SS_X}$  
+$a = \bar{Y} - b\bar{X}$
+
+Alternatively, $b$ can also be found via:
+
+$b = \sqrt{\frac{SS_Y}{SS_X}} * r$
+
+
+### Walkthrough
+
+Consider the following $X$ and $Y$ variables:
+
+```{r}
+x = c(2, 4, 9, 10, 11, 14, 14, 15, 16, 19, 22)
+y = c(5, 6, 10, 14, 15, 20, 22, 22, 23, 27, 33)
+
+df_new = data.frame(x = x,
+                    y = y)
+
+df_new %>%
+  ggplot(aes(x = x,
+             y = y)) +
+  geom_point() +
+  theme_minimal()
+```
+
+By eye, we could probably draw a pretty straight line between $X$ and $Y$. But what would our parameter values for the line of best fit be?
+
+First, we need to find $b$. Recall that $b = \frac{SP_\text{XY}}{SS_X}$. 
+
+```{r}
+sp_xy = sum((x - mean(x)) * (y - mean(y)))
+ss_x = sum((x - mean(x))**2)
+
+b_value = sp_xy / ss_x
+b_value
+```
+
+This means: as $X$ increases by 1, $Y$ increases by `r round(b_value, 2)`. 
+
+Now we c an find $a$, which is \bar{Y} - b\bar{X}$:
+
+```{r}
+a_value = mean(y) - b_value * mean(x)
+a_value
+```
+
+This means: when $X = 0$, $Y$ is `r round(a_value, 2)`.
+
+Just to check, let's validate against the results from R:
+
+```{r}
+lm(y ~ x)
+```
+
+
+## Building our intuition
+
+## Making predictions
+
+We can use our fit parameters to generate **predictions**. This allows us to:
+
+- Evaluate how well our model captures the actual data in our dataset.  
+- Make predictions about data we've never seen before.  
+
+To generate predictions, simply plug in a value of $X$ into the equation with the fit parameters. Let's first try this with our original set of $X$ points:
+
+```{r}
+df_new$y_pred = b_value * x + a_value
+```
+
+We can plot our original $Y$ values against the predicted values, and we see that it's pretty good!
+
+```{r}
+df_new %>%
+  ggplot(aes(x = y_pred,
+             y = y)) +
+  geom_point() +
+  theme_minimal()
+```
+
+We can also visualize the **differences** (i.e., the **error**) between our predictions and the actual values (the dotted line is at 0, reflecting 0 prediction error). Again, we see that we do pretty well. Most of our predictions are within a couple units of our actual values: 
+
+```{r}
+df_new$diff = df_new$y_pred - df_new$y
+
+df_new %>%
+  ggplot(aes(x = diff)) +
+  geom_histogram() +
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  theme_minimal()
+```
+
+Finally, we can also make predictions about new data points. When these data points fall within the original range of $X$, e.g., `r range(x)`, this is called **interpolation**. When they fall outside range, it's called **extrapolation**. In both cases, you can just think of this as *continuing* the line that we fit---either to fill in missing values, or to extend it past the range of our initial observations. Note, however, that extrapolation can be dangerous: it's not necessarily a guarantee that the same linear relationship will hold for larger or smaller values of $X$.
+
+
+# Correlations and regressions in R!
+
+The above steps show you how to compute correlations and linear regressions essentially "by hand" (With the help of an R calculator). But R has many of these functions built in. For example, to compute a linear regression, simply use the `lm` function:
+
+```{r}
+model = lm(data = df_new,
+           y ~ x)
+summary(model)
+```
+
+This model can then be used to generate predictions about novel data using the `predict` function:
+
+```{r}
+df_newdata = data.frame(x = c(50:60))
+
+df_newdata$y_pred = predict(model, newdata = df_newdata)
+
+df_newdata %>%
+  ggplot(aes(x = x,
+             y = y_pred)) +
+  geom_point() +
+  theme_minimal()
+```
+
+Similarly, the `cor` function can be used to find correlations between variables:
+
+```{r}
+cor(df_new$x, df_new$y)
+```
+
+
+
+# Conclusion
+
+This tutorial only scratches the surface of correlations and linear regression. Linear regression, in particular, is in my opinion a great starting point for learning more about statistics. It involves building a **model** of your data with certain assumptions (e.g., linearity), which allows you to fit **parameters** and make novel **predictions**; it also gives you a grounds for thinking about **model fit**, i.e., how well your model describes your data, by comparing your predictions to the actual $Y$ values.
+
+
+# Footnotes
+
+
+
