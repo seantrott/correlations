@@ -1,0 +1,207 @@
+---
+title: "Correlation and linear regression"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+---
+
+*Sean Trott*
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include = FALSE}
+library(tidyverse)
+library(reshape)
+```
+
+The goal of this tutorial is to give both a **conceptual** and **technical** introduction to correlations and linear regression.
+
+# Part 1: Correlation
+
+A **correlation** is a measure between $[-1.0, 1.0]$ of the linear relationship between two quantitative variables $X$ and $Y$. Examples include:
+
+- The relationship between a parent's height and a child's height.
+- The relationship between country GDP and average years of education. 
+- The relationship between average temperature and C02 concentration. 
+- Number of hours slept per night and GPA.    
+- Stress level and reaction time. 
+
+In this tutorial, we'll be focusing on **Pearson's r** as a measure of correlation.
+
+## Conceptual background: why compute correlations?
+
+Put simply, a correlation allows you to infer: when $X$ goes up, does $Y$ tend to go up or down? A **positive** correlation ($r > 0$) means that when $X$ goes up, $Y$ also tends to go up; a **negative** correlation ($r < 0$) means that when $X$ goes up, $Y$ tends to go down. 
+
+Furthermore, the **magnitude** of $r$ tells us about the degree of relationship. A larger value (closer to $1$ or $-1$) generally indicates that $Y$ tends to change in linear, systematic ways with respect to $Y$---i.e., that any variance is $X$ has corresponding, systematic (either positive or negative) variance in $Y$. 
+
+An example of a perfectly positive correlation can be illustrated by plotting two identical datasets, i.e., $X = Y$:
+
+```{r}
+x = c(1:100)
+y = c(1:100)
+
+df = data.frame(X = x,
+                Y = y)
+
+df %>%
+  ggplot(aes(x = X,
+             y = Y)) +
+  geom_point() +
+  labs("Perfect positive correlation") +
+  theme_minimal()
+
+```
+
+Sure enough, $r = 1$ for this dataset:
+
+```{r}
+cor(df$X, df$Y)
+```
+
+Importantly, this is true even if we apply linear transformations to $Y$, such as multiplying everything by 2.
+
+```{r}
+df$Y2 = df$Y * 2
+
+df %>%
+  ggplot(aes(x = X,
+             y = Y2)) +
+  geom_point() +
+  labs("Perfect positive correlation") +
+  theme_minimal()
+
+cor(df$X, df$Y2)
+```
+
+We can also create a perfectly *negative* correlation by multiplying everything in $X$ by $-1$:
+
+
+```{r}
+df$Y_neg = df$Y * -1
+
+df %>%
+  ggplot(aes(x = X,
+             y = Y_neg)) +
+  geom_point() +
+  labs("Perfect negative correlation") +
+  theme_minimal()
+
+cor(df$X, df$Y_neg)
+```
+
+
+## Obligatory caveat: Correlation != Causation
+
+You've likely heard this before, but it never hurts to repeat: [finding evidence of a linear correlation between two variables does not imply that one **causes** the other](https://en.wikipedia.org/wiki/Correlation_does_not_imply_causation). 
+
+Causal inference and [causality](https://en.wikipedia.org/wiki/Causality) more broadly is a heady topic beyond the scope of this tutorial. But it's important to remember that just because $X$ and $Y$ systematically covary, does not mean $X$ *causes* $Y$. The relationship could be driven by a series of mediating variables, or may even be entirely spurious.
+
+## How do you compute correlation?
+
+The formula for computing Pearson's r is as follows:
+
+$r(X, Y) = \frac{SP_\text{XY}}{\sqrt{SS_X*SS_Y}}$
+
+Where $SP_\text{XY}$ is the **sum of products** of $X$ and $Y$, and $SS$ refers to the **sum of squares** for $X$ and $Y$, respectively. Let's walk through computing each of these terms, using the following observations as our starting point:
+
+```{r}
+a = c(1, 3, 3, 5, 7, 8, 10, 10)
+b = c(2, 2, 4, 6, 9, 10, 11, 9)
+
+plot(a, b)
+```
+
+### Sum of squares
+
+The **sum of squares** is a way of quantifying the amount of squared deviation from your mean.
+
+To calculate it (e.g., for $SS_X$), follow these steps:
+
+1. Calculate the mean of $X$ ($\bar{X}$).  
+2. For each data point in $X$, subtract $\bar{X}$.  
+3. Square each of these scores.  
+4. Sum the squared difference scores.
+
+Here's the series of calculations in R:
+
+```{r}
+## Get our difference scores
+a_diff = a - mean(a)
+b_diff = b - mean(b)
+
+## Square the scores
+a_sq = a_diff ** 2
+b_sq = b_diff ** 2
+
+## Sum them
+ss_a = sum(a_sq)
+ss_b = sum(b_sq)
+```
+
+
+### Sum of products
+
+Here's the step-by-step approach. You should see some parallels to calculating the sum of squares!
+
+1. Calculate the mean of $X$ ($\bar{X}$) and the mean of $Y$ ($\bar{Y}$).  
+2. For each data point in $X$, subtract $\bar{X}$; for each data point in $Y$, subtract $\bar{Y}$. 3. Now, for each of these difference scores $(x_i, y_i)$, take the **product**. 
+4. Sum these products together.
+
+And here's the series of calculations in R:
+
+```{r}
+## Get our difference scores
+a_diff = a - mean(a)
+b_diff = b - mean(b)
+
+## Take the product
+ab_product = a_diff * b_diff
+
+## Sum the products
+sp = sum(ab_product)
+```
+
+### Putting it altogether
+
+Now, we divide $SP_\text{XY}$ by $\sqrt{SS_X*SS_Y}$:
+
+```{r}
+r = sp/(sqrt(ss_a*ss_b))
+r
+```
+
+We can double-check against this against R's built-in correlation function:
+
+```{r}
+R_r = cor(a, b)
+R_r
+```
+
+
+### Building an intuition
+
+Personally, I find it helpful to think about *why* one would use this formula. Why this series of steps and not another?
+
+First let's think about what the **sum of products** is calculating. Essentially, we're asking: does each pair $(x_i, y_i)$ vary in similar ways with respect to the means of $X$ and $Y$? Notably, the sum of products will only be positive if most of the deviations have the same *sign*---i.e., if $X$ goes up when $Y$ goes up. Moreover, the sum of products will have a larger *absolute* value as more of the values change together. If $X$ and $Y$ are exactly the same, then each pair $(x_i, y_i)$ will vary in *identical* ways from their respective means. 
+
+But now we need to normalize this value against something else. It's hard to interpret the **sum of products** value without knowing how much $X$ and $Y$ vary in general. This is exactly what we can quantify with the **sum of squares**.
+
+$SS_X$ and $SS_Y$ are measures of how much observations in $X$ and $Y$ vary from their respective means. If all values in $X$ are the same---i.e., there is *no* variability---then $SS_X$ will be 0. The more variable these observations are, the larger sum of squares will be. Multipling $SS_X$ and $SS_Y$ gives us a measure of the combined variability in *both* measures; we take the square root of that to put it on the same playing field as ${SP_\text{XY}}$.
+
+This may also be clear by considering, once again, the case where $X = Y$. This will mean that $SS_X = SS_Y = SP_\text{XY}$, which in turn means that $r = 1$. 
+
+## Limitations of correlation
+
+Measurements of linear correlation have a number of limitations. As noted above, linear correlation doesn't tell us anything about *causality*.
+
+But even disregarding theoretical inferences these measures afford, there are other limitations:
+
+1. Linear correlations will not capture trends in non-linear data.  
+2. $r$ can be easily distorted by **outliers**.  
+3. **Restricted ranges** (e.g., accidentally sampling from a biased portion of the underlying population) will strongly bias $r$.  
+4. $r$ doesn't actually give a measure of the **central tendency** in bivariate data---i.e., the **slope of the line**.
+
+The problem in (4) is where linear regression comes in.
